@@ -1,0 +1,102 @@
+service: ${self:custom.name}
+
+plugins:
+  - serverless-python-requirements
+  - serverless-wsgi
+  - serverless-dynamodb-local
+
+package:
+  exclude:
+    - .dynamodb/**
+    - .vscode/**
+    - .serverless/**
+    - __pycache__/**
+    - node_modules/**
+    - env/**
+    - README.md
+    - package.json
+    - package-lock.json
+    - yarn.lock
+    - requirements.txt
+
+provider: 
+  name: aws
+  runtime: python3.6
+  stage: ${opt:stage, 'dev'}
+  region: eu-central-1
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:DescribeTable
+        - dynamodb:BatchWriteItem
+      Resource:
+        - { "Fn::GetAtt": ["PetDynamoTable", "Arn"] }
+  environment:
+    APP_CONFIG: ${self:provider.stage}
+    PROVIDER_REGION: ${self:provider.region}
+    PET_TABLE: ${self:custom.petTable}
+    AUTH_POOL: ${self:custom.authPool}
+    AUTH_CLIENT_ID: ${self:custom.authClientId}
+
+custom:
+  name: findmypet
+  petTable: '${self:custom.name}-pet-table-${self:provider.stage}'
+  authPool: 'eu-central-1_4Q91wIB8X'
+  authClientId: '540q9q99kkact1aj11d7bpddnb'
+  wsgi:
+    app: run.app
+    packRequirements: false
+  pythonRequirements:
+    dockerizePip: non-linux
+  dynamodb:
+    start:
+      migrate: true
+    stages:
+      - dev
+
+functions:
+  getPetList:
+    handler: wsgi_handler.handler
+    events:
+      - http:
+          path: api/pet
+          method: get
+          cors: true
+  
+  createPet:
+    handler: wsgi_handler.handler
+    events:
+      - http:
+          path: api/pet
+          method: post
+          cors: true
+
+resources:
+  Resources:
+    PetDynamoTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: owner
+            AttributeType: S
+          -
+            AttributeName: name
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: owner
+            KeyType: HASH
+          -
+            AttributeName: name
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:custom.petTable}
