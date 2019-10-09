@@ -27,6 +27,8 @@ provider:
   iamRoleStatements:
     - Effect: Allow
       Action:
+        - sqs:SendMessage
+        - sqs:GetQueueUrl
         - dynamodb:Query
         - dynamodb:Scan
         - dynamodb:GetItem
@@ -37,18 +39,29 @@ provider:
         - dynamodb:BatchWriteItem
       Resource:
         - { "Fn::GetAtt": ["PetDynamoTable", "Arn"] }
+        - { "Fn::GetAtt": ["SubscriptionDynamoTable", "Arn"] }
+        - { "Fn::GetAtt": ["PushSQSQueue", "Arn" ] }
+        - { "Fn::GetAtt": ["PetSQSQueue", "Arn" ] }
   environment:
     APP_CONFIG: ${self:provider.stage}
     PROVIDER_REGION: ${self:provider.region}
     PET_TABLE: ${self:custom.petTable}
+    SUBSCRIPTION_TABLE: ${self:custom.subscriptionTable}
     AUTH_POOL: ${self:custom.authPool}
     AUTH_CLIENT_ID: ${self:custom.authClientId}
+    PET_QUEUE: ${self:custom.petQueue}
+    PUSH_QUEUE: ${self:custom.pushQueue}
+    PUSH_KEY: ${self:custom.pushKey}
 
 custom:
   name: findmypet
   petTable: '${self:custom.name}-pet-table-${self:provider.stage}'
+  subscriptionTable: '${self:custom.name}-subscription-table-${self:provider.stage}'
+  petQueue: '${self:custom.name}-pet-${self:provider.stage}'
+  pushQueue: '${self:custom.name}-push-${self:provider.stage}'
   authPool: 'eu-central-1_4Q91wIB8X'
   authClientId: '540q9q99kkact1aj11d7bpddnb'
+  pushKey: a3z7ene3CsVear9zwcuH3g8TG6xwZyU6pbdUoQ7h_zo
   wsgi:
     app: run.app
     packRequirements: false
@@ -61,6 +74,35 @@ custom:
       - dev
 
 functions:
+  fakeLocationService:
+    handler: services.fake_update_pets_location
+    events:
+      - schedule: rate(5 minutes)
+
+  bigLocationUpdate:
+    handler: services.fake_big_update_pets_location
+
+  petLocationService:
+    handler: services.handle_pet_location_update
+    events:
+      - sqs:
+          arn: { "Fn::GetAtt": ["PetSQSQueue", "Arn" ] }
+          batchSize: 1
+  
+  zoneAlertService:
+    handler: services.pet_zone_alert
+    events:
+      - sqs:
+          arn: { "Fn::GetAtt": ["PetSQSQueue", "Arn" ] }
+          batchSize: 1
+  
+  pushService:
+    handler: services.handle_zone_alert
+    events:
+      - sqs:
+          arn: { "Fn::GetAtt": ["PushSQSQueue", "Arn" ] }
+          batchSize: 10
+  
   getPetList:
     handler: wsgi_handler.handler
     events:
@@ -75,6 +117,22 @@ functions:
       - http:
           path: api/pet
           method: post
+          cors: true
+  
+  createSubscription:
+    handler: wsgi_handler.handler
+    events:
+      - http:
+          path: api/subscription
+          method: post
+          cors: true
+  
+  deleteSubscription:
+    handler: wsgi_handler.handler
+    events:
+      - http:
+          path: api/subscription
+          method: delete
           cors: true
 
 resources:
@@ -100,3 +158,35 @@ resources:
           ReadCapacityUnits: 1
           WriteCapacityUnits: 1
         TableName: ${self:custom.petTable}
+    
+    SubscriptionDynamoTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: owner
+            AttributeType: S
+          -
+            AttributeName: endpoint
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: owner
+            KeyType: HASH
+          -
+            AttributeName: endpoint
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        TableName: ${self:custom.subscriptionTable}
+    
+    PetSQSQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:custom.petQueue}
+    
+    PushSQSQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:custom.pushQueue}

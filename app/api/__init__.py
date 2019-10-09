@@ -22,5 +22,7 @@ api = Api(
 )
 
 from .endpoints.pet import ns as pet_namespace
+from .endpoints.subscription import ns as subscription_namespace
 
 api.add_namespace(pet_namespace)
+api.add_namespace(subscription_namespace)

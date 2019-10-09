@@ -8,7 +8,7 @@ from pynamodb.exceptions import DoesNotExist
 from ..security import auth
 from ..serializers.pet import pet_model, pet_resource, pet_paginated_model
 from ..parsers import pet_parser
-from ...models import Pet, Position, PetLocation
+from ...models import Pet, Position, PetLocation, Zone
 
 
 ns = Namespace('pet', description='Pet related operations.')
@@ -65,7 +65,7 @@ class PetResource(Resource):
         Create pet
         """
         payload = request.json
-
+        fake_start_position = Position(lat=50.635221, lng=3.058015)
         pet = Pet(
             id=str(uuid.uuid1()),
             owner=g.user['username'],
@@ -75,10 +75,11 @@ class PetResource(Resource):
             description=payload['description'],
             location=PetLocation(
                 at=datetime.timestamp(datetime.now()),
-                position=Position(
-                    lat=50.635221,
-                    lng=3.058015
-                )
+                position=fake_start_position
+            ),
+            zone=Zone(
+                position=fake_start_position,
+                radius=0.000600
             )
         )
 
