@@ -8,7 +8,7 @@ cffi==1.12.3
 chardet==3.0.4
 Click==7.0
 cognitojwt==1.1.0
-cryptography==2.7
+cryptography==3.2
 docutils==0.15.2
 ecdsa==0.13.3
 Flask==1.1.1
